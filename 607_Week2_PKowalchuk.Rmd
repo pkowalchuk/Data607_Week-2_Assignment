@@ -1,0 +1,163 @@
+---
+title: "607 Week 2 Assignment"
+author: "Peter Kowalchuk"
+date: "9/8/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Assigment Instructions
+
+Choose six recent popular movies.  Ask at least five people that you know (friends, family, classmates, imaginary friends) to rate each of these movie that they have seen on a scale of 1 to 5.  Take the results (observations) and store them in a SQL database.  Load the information into an R dataframe.
+
+## Solution A
+
+First approach is a straight forward import into MySQL and R of a csv file with rows of Movies to rate, and columns of individuals who have rated them. CSV file looked this this:
+
+Solo: A Star Wars Story,1,4,4,2,5   
+Dunkirk,1,4,3,1,5    
+Antman and the Wasp,1,5,4,3,1    
+Mission Impossible,5,2,3,1,4    
+Hotel Transilvania,3,4,5,5,4    
+Crazy Rich Asians,2,5,3,3,3    
+
+In MySQL a new data schema was created called movies, and data was imported using the following SQL script:
+
+/*   
+  movies.sql   
+*/   
+
+DROP TABLE IF EXISTS movies;    
+
+CREATE TABLE movies     
+(    
+  movies varchar(100) NOT NULL,    
+  sue int NULL,    
+  sam int NULL,    
+  nick int NULL,    
+  sophie int NULL,     
+  alfred int NULL     
+);     
+
+SELECT * FROM movies;     
+
+LOAD DATA INFILE '/users/public/movies.csv'     
+INTO TABLE movies    
+FIELDS TERMINATED BY ','     
+
+Steps in the script are:   
+- created the table movies   
+- created columns: movies, sue, sam, nick, sophie, alfred   
+- loads the data from the csv file    
+
+The following statement shows the data in the MySQL database:
+select * from movies    
+
+![Fig 1. Movies table in MySQL dB.](/users/public/movies-table-1.png)
+
+
+To load data into an R data frame we first load the RMySQL library, after installing the package. Note: we also load a library call knitr to use of some of the rmarkdown file data presentations.
+
+```{r}
+library("RMySQL")
+library(knitr)
+```
+
+We then create a database connection
+
+```{r}
+mydb<-dbConnect(MySQL(),user='root',password='XXXXXX',dbname='movies',host='localhost')
+```
+
+We can then test and see how the table movie is not accesible in R
+
+```{r}
+dbListTables(mydb)
+dbListFields(mydb,'movies')
+```
+
+To bring data into R as a data frame we first run a query in MySQL from R, and then fetch the data into a data frame
+
+```{r}
+movieDataQuery<-dbSendQuery(mydb,'select * from movies')
+movieData<-fetch(movieDataQuery,n=-1)
+```
+
+Now we have the data in R as a frame called movieData
+
+```{r}
+nrow(movieData)
+kable(movieData)
+```
+
+## Solution B
+
+Problem with Solution A is that we assume that all individuals rated all movies. Even more, the column names, which is part of the table and hence the database schema, constitutes the names of the individuals. So we are using data to define our schema, and if not all individuals have rated all movies, our table will have a lot of null values. For this reason we need a normalized solution.
+
+We could rewrite the csv file to match this new table scructure and repeat all steps in Solution A. But instead we will assume we have the same CSV file. So we will import that data into a temp table same as before, then from that table create the desired normilized table.
+
+We run the following script in SQL
+
+/*   
+  ratings.sql    
+*/    
+    
+DROP TABLE IF EXISTS ratings;    
+    
+CREATE TABLE ratings    
+(    
+  ratingID int AUTO_INCREMENT PRIMARY KEY,    
+  name varchar(100),    
+  movie varchar(100),    
+  rating int    
+);    
+     
+DROP TABLE IF EXISTS moviesTemp;    
+    
+CREATE TABLE moviesTemp     
+(    
+  movies varchar(100) NOT NULL,    
+  sue int NULL,    
+  sam int NULL,    
+  nick int NULL,    
+  sophie int NULL,    
+  alfred int NULL    
+);    
+    
+LOAD DATA INFILE '/users/public/movies.csv'     
+INTO TABLE moviesTemp    
+FIELDS TERMINATED BY ',';   
+    
+insert into ratings (name,movie,rating) select 'Sue',movies,sue from moviesTemp;    
+insert into ratings (name,movie,rating) select 'Sam',movies,sam from moviesTemp;    
+insert into ratings (name,movie,rating) select 'Nick',movies,nick from moviesTemp;  
+insert into ratings (name,movie,rating) select 'Sophie',movies,sophie from    moviesTemp;    
+insert into ratings (name,movie,rating) select 'Alfred',movies,alfred from     moviesTemp;    
+    
+select * from ratings    
+
+This script does the following:
+- creates a ratings table with a primary key with increasing values called ratingID
+- creates a movieTemp table and loads our csv file. This is the table with the wrong structure
+-inserts the appropiate data from the temp table into the ratings table producing a properly normalized table
+
+![Fig 2. Ratings table in MySQL dB.](/users/public/ratings-table-1.png)
+
+This exercise probably doesn't have much use in the real world, we should have probably started by importing data directry into the ratings table by having a proper input csv file. But the exercise gave me a chance to work on sql
+
+The rest of the solution is to run the same R script as in A to get this table into R
+
+```{r}
+mydb<-dbConnect(MySQL(),user='root',password='XXXXXX',dbname='movies',host='localhost')
+dbListTables(mydb)
+dbListFields(mydb,'ratings')
+ratingDataQuery<-dbSendQuery(mydb,'select * from ratings')
+ratingData<-fetch(ratingDataQuery,n=-1)
+nrow(ratingData)
+kable(ratingData)
+```
+
+
